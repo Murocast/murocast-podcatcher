@@ -1,4 +1,25 @@
 ﻿open System
+open Castos.Podcatcher.Json
+
+type SubscriptionId = Guid
+type EpisodeId = int
+
+type Episode = {
+    Id: EpisodeId
+    SubscriptionId: SubscriptionId
+    MediaUrl: string
+    Title: string
+    ReleaseDate: System.DateTime
+}
+
+type Subscription = {
+    Id: SubscriptionId
+    Url: string
+    Name: string
+    Category: string
+    Active: bool
+    Episodes: Episode list
+}
 
 let getAsync (url:string) =
     async {
@@ -12,7 +33,10 @@ let getAsync (url:string) =
 [<EntryPoint>]
 let main argv =
     printfn "Hello World from F#!"
-    let content = getAsync "http://example.org/"
+    let content = getAsync "http://localhost/api/subscriptions"
                   |> Async.RunSynchronously
-    printfn "%s" content
+
+    let (typedContent:Subscription list) = unjson content
+
+    printfn "%O" typedContent
     0 // return an integer exit code
