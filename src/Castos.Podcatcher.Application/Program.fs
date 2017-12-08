@@ -1,8 +1,9 @@
 ﻿open System
 open Castos.Podcatcher.Json
-open FeedParserCore
 open System.Net.Http
 open System.Text
+
+open Rss
 
 type SubscriptionId = Guid
 type SubscriptionListItemRendition = {
@@ -49,14 +50,14 @@ let postAsync (url:string) body =
 
 let addEpisodeToSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
     let rec loop() = async {
-        let! (s:SubscriptionListItemRendition), (e: FeedItem) = inbox.Receive()
+        let! (s:SubscriptionListItemRendition), (e:RssPost) = inbox.Receive()
         let rendition = { Title = e.Title
                           Url = e.Link
-                          ReleaseDate = e.PublishDate }
+                          ReleaseDate = e.Date }
         let json = mkjson rendition
         let! _ = postAsync (sprintf "http://localhost/api/subscriptions/%O/episodes" s.Id) json
 
-        printfn "Add episode %s to subscription %s" e.Link s.Name
+        printfn "Add episode %s with mediaurl %s, guid %s and length %i to subscription %s" e.Link e.MediaUrl e.Guid e.Length s.Name
         return! loop()
     }
 
@@ -73,7 +74,7 @@ let updateSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
 
         let (episodes:Episode list) = unjson content
 
-        FeedParser.Parse(url, FeedType.Atom)
+        getRssPosts url
         |> List.ofSeq
         |> List.filter (fun item -> not(episodes |> List.exists (fun e -> item.Link.ToLowerInvariant() = e.MediaUrl.ToLowerInvariant())))
         |> List.map (fun item -> addEpisodeToSubscriptionAgent.Post (msg, item))
