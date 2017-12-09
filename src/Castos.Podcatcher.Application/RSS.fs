@@ -11,8 +11,8 @@ type RssPost = { Title: string;
                  Link: string;
                  Date: DateTime
                  Guid: string
-                 MediaUrl: string
-                 Length: int }
+                 MediaUrl: string Option
+                 Length: int Option }
 
 let private winToUtf (s:string) =
     let win1251 = Encoding.GetEncoding("windows-1251")
@@ -29,14 +29,22 @@ let parseDate = (flip4 (DateTime.ParseExact:string*string[]*CultureInfo*DateTime
 
 let private parseNode (node:XmlNode) =
     let enclosureNode = (node.SelectSingleNode "enclosure")
-    {
-        Title = (node.SelectSingleNode "title").InnerText
-        Link = (node.SelectSingleNode "link").InnerText
-        Date = parseDate (node.SelectSingleNode "pubDate").InnerText
-        Guid = (node.SelectSingleNode "guid").InnerText
-        MediaUrl = enclosureNode.Attributes.["url"].Value
-        Length = int enclosureNode.Attributes.["length"].Value
-    }
+    let rssPost = {
+                    Title = (node.SelectSingleNode "title").InnerText
+                    Link = (node.SelectSingleNode "link").InnerText
+                    Date = parseDate (node.SelectSingleNode "pubDate").InnerText
+                    Guid = (node.SelectSingleNode "guid").InnerText
+                    MediaUrl = None
+                    Length = None
+                  }
+
+    if(isNull enclosureNode) then
+        rssPost
+    else
+        { rssPost with
+              MediaUrl = Some enclosureNode.Attributes.["url"].Value
+              Length = Some (int enclosureNode.Attributes.["length"].Value)
+        }
 
 let public getRssPosts (host:string) =
     let doc = XmlDocument()

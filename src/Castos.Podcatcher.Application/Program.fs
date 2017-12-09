@@ -59,17 +59,11 @@ let postAsync (url:string) body =
 
 let addEpisodeToSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
     let rec loop() = async {
-        let! (s:SubscriptionListItemRendition), (e:RssPost) = inbox.Receive()
-        let rendition = { Guid = e.Guid
-                          Title = e.Title
-                          Url = e.Link
-                          MediaUrl = e.MediaUrl
-                          ReleaseDate = e.Date
-                          Length = e.Length }
+        let! (s:SubscriptionListItemRendition), rendition = inbox.Receive()
         let json = mkjson rendition
         let! _ = postAsync (sprintf "%s/subscriptions/%O/episodes" CastosApi s.Id) json
 
-        printfn "Add episode %s with mediaurl %s, guid %s and length %i to subscription %s" e.Link e.MediaUrl e.Guid e.Length s.Name
+        printfn "Add episode %s with mediaurl %s, guid %s and length %i to subscription %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
         return! loop()
     }
 
@@ -88,8 +82,16 @@ let updateSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
 
         getRssPosts url
         |> List.ofSeq
-        |> List.filter (fun item -> not(episodes |> List.exists (fun e -> item.Guid.ToLowerInvariant() = e.Guid.ToLowerInvariant())))
-        |> List.map (fun item -> addEpisodeToSubscriptionAgent.Post (msg, item))
+        |> List.filter (fun item ->
+                        not(episodes |> List.exists (fun e -> item.Guid = e.Guid) && (Option.isSome item.MediaUrl) && (Option.isSome item.Length)))
+        |> List.map (fun e ->
+            let rendition ={ Guid = e.Guid
+                             Title = e.Title
+                             Url = e.Link
+                             MediaUrl = Option.get e.MediaUrl
+                             ReleaseDate = e.Date
+                             Length = Option.get e.Length }
+            addEpisodeToSubscriptionAgent.Post (msg, rendition))
         |> ignore
 
         return! loop()
