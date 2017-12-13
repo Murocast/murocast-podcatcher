@@ -27,7 +27,22 @@ let parseDate = (flip4 (DateTime.ParseExact:string*string[]*CultureInfo*DateTime
                         CultureInfo.InvariantCulture
                         [|"ddd, dd MMM yyyy HH:mm:ss GMT"; "ddd, dd MMM yyyy HH:mm:ss zzz"|]
 
-let private parseNode (node:XmlNode) =
+let toCorrectNumber s =
+    ((int s).ToString("00", CultureInfo.GetCultureInfo("de-DE")))
+let normalizeDurationString (duration:string) =
+    let splitted = duration.Split([|':'|])
+    match splitted.Length with
+    | 1 -> sprintf "00:00:%s" (toCorrectNumber splitted.[0])
+    | 2 -> sprintf "00:%s:%s" (toCorrectNumber splitted.[0]) (toCorrectNumber splitted.[1])
+    | 3 -> sprintf "%s:%s:%s" (toCorrectNumber splitted.[0]) (toCorrectNumber splitted.[1]) (toCorrectNumber splitted.[2])
+    | _ -> failwith "WrongFormat"
+
+let parseDuration duration =
+    int (TimeSpan
+            .ParseExact(normalizeDurationString duration, "c", CultureInfo.InvariantCulture)
+            .TotalSeconds)
+
+let private parseNode nsManager (node:XmlNode) =
     let enclosureNode = (node.SelectSingleNode "enclosure")
     let rssPost = {
                     Title = (node.SelectSingleNode "title").InnerText
@@ -37,17 +52,19 @@ let private parseNode (node:XmlNode) =
                     MediaUrl = None
                     Length = None
                   }
-
     if(isNull enclosureNode) then
         rssPost
     else
+        let duration = parseDuration (node.SelectSingleNode("itunes:duration", nsManager).InnerText)
         { rssPost with
               MediaUrl = Some enclosureNode.Attributes.["url"].Value
-              Length = Some (int enclosureNode.Attributes.["length"].Value)
+              Length = Some duration
         }
 
 let public getRssPosts (host:string) =
     let doc = XmlDocument()
+    let nsManager = XmlNamespaceManager(doc.NameTable)
+    nsManager.AddNamespace("itunes","http://www.itunes.com/dtds/podcast-1.0.dtd")
     host
         |> getAsync
         |> Async.RunSynchronously
@@ -55,7 +72,7 @@ let public getRssPosts (host:string) =
         |> doc.LoadXml
     doc.SelectNodes "/rss/channel/item"
         |> Seq.cast<XmlNode>
-        |> Seq.map parseNode
+        |> Seq.map (parseNode nsManager)
 
 let public getManyRssPosts: (list<string> -> list<RssPost>) =
     Seq.map getRssPosts
