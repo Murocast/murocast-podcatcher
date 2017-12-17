@@ -42,24 +42,31 @@ let parseDuration duration =
             .ParseExact(normalizeDurationString duration, "c", CultureInfo.InvariantCulture)
             .TotalSeconds)
 
-let private parseNode nsManager (node:XmlNode) =
+let updateDuration (node:XmlNode) nsManager rssPost =
+    let durationNode = node.SelectSingleNode("itunes:duration", nsManager)
+    if(isNull durationNode) then
+        rssPost
+    else
+        { rssPost with
+                    Length = Some (parseDuration durationNode.InnerText) }
+
+let updateMediaUrl (node:XmlNode) rssPost =
     let enclosureNode = (node.SelectSingleNode "enclosure")
-    let rssPost = {
-                    Title = (node.SelectSingleNode "title").InnerText
-                    Link = (node.SelectSingleNode "link").InnerText
-                    Date = parseDate (node.SelectSingleNode "pubDate").InnerText
-                    Guid = (node.SelectSingleNode "guid").InnerText
-                    MediaUrl = None
-                    Length = None
-                  }
     if(isNull enclosureNode) then
         rssPost
     else
-        let duration = parseDuration (node.SelectSingleNode("itunes:duration", nsManager).InnerText)
         { rssPost with
-              MediaUrl = Some enclosureNode.Attributes.["url"].Value
-              Length = Some duration
-        }
+              MediaUrl = Some enclosureNode.Attributes.["url"].Value }
+
+let private parseNode nsManager (node:XmlNode) =
+    {  Title = (node.SelectSingleNode "title").InnerText
+       Link = (node.SelectSingleNode "link").InnerText
+       Date = parseDate (node.SelectSingleNode "pubDate").InnerText
+       Guid = (node.SelectSingleNode "guid").InnerText
+       MediaUrl = None
+       Length = None }
+    |> updateDuration node nsManager
+    |> updateMediaUrl node
 
 let public getRssPosts (host:string) =
     let doc = XmlDocument()
