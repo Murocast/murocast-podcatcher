@@ -83,7 +83,7 @@ let updateSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
         getRssPosts url
         |> List.ofSeq
         |> List.filter (fun item ->
-                        not(episodes |> List.exists (fun e -> item.Guid = e.Guid) && (Option.isSome item.MediaUrl) && (Option.isSome item.Length)))
+                            not(episodes |> List.exists (fun e -> item.Guid = e.Guid)) && (Option.isSome item.MediaUrl) && (Option.isSome item.Length))
         |> List.map (fun e ->
             let rendition ={ Guid = e.Guid
                              Title = e.Title
