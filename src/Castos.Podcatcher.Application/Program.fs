@@ -89,20 +89,25 @@ let postAsync (url:string) body =
         return! response.Content.ReadAsStringAsync() |> Async.AwaitTask
     }
 
-let addEpisodeToSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
-    let rec loop() = async {
-        let! (s:SubscriptionListItemRendition), rendition = inbox.Receive()
-        let json = mkjson rendition
-        let! _ = postAsync (sprintf "%s/subscriptions/%O/episodes" CastosApi s.Id) json
-
-        printfn "Add episode %s with mediaurl %s, guid %s and length %i to subscription %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
-        return! loop()
-    }
-
-    loop()
-)
-
 let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) = MailboxProcessor.Start(fun inbox ->
+    let addEpisodeToSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
+        let rec loop() = async {
+            let! (s:SubscriptionListItemRendition), rendition = inbox.Receive()
+            let json = mkjson rendition
+            let! _ = postAsync (sprintf "%s/subscriptions/%O/episodes" CastosApi s.Id) json
+
+            printfn "Add episode %s with mediaurl %s, guid %s and length %i to subscription %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
+            return! loop()
+        }
+
+        loop()
+    )
+
+    let rec waitForEpisodesAdded (agent:MailboxProcessor<SubscriptionListItemRendition*AddEpisodeRendition>) =
+        match agent.CurrentQueueLength with
+        | 0 -> ()
+        | _ -> waitForEpisodesAdded agent
+
     let rec loop() = async {
         let! (msg: SubscriptionListItemRendition) = inbox.Receive()
         let url = msg.Url
@@ -126,8 +131,7 @@ let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) =
             addEpisodeToSubscriptionAgent.Post (msg, rendition))
         |> ignore
 
-        //TODO: The agents to add episodes have to be tracked aswell
-
+        waitForEpisodesAdded addEpisodeToSubscriptionAgent
         supervisor.Post(FetchCompleted)
 
         return! loop()
