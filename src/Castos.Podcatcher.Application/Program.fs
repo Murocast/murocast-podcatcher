@@ -148,7 +148,7 @@ let rec dispatch progress =
                                   | None when progress.Workers.Length < 5 ->
                                         let newWorker = updateSubscriptionAgent progress.Supervisor
                                         dispatch { progress with Workers = newWorker :: progress.Workers }
-                                  | _ -> dispatch progress
+                                  | _ -> progress
 
 let start supervisor replyChannel =
     {
@@ -181,6 +181,7 @@ let handleFetchCompleted progress =
     let progress =
         progress
         |> complete
+        |> dispatch
     if progress.PendingUrls.IsEmpty && progress.Dispatched = 0 then
         progress.ReplyChannel.Reply(())
         Finished
