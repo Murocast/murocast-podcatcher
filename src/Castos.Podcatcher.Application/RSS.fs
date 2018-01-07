@@ -25,7 +25,7 @@ let private flip4 f a b c d = f(d, c, b, a)
 let parseDate = (flip4 (DateTime.ParseExact:string*string[]*CultureInfo*DateTimeStyles->DateTime)) 
                         DateTimeStyles.None
                         CultureInfo.InvariantCulture
-                        [|"ddd, dd MMM yyyy HH:mm:ss GMT"; "ddd, dd MMM yyyy HH:mm:ss zzz"|]
+                        [|"ddd, dd MMM yyyy HH:mm:ss GMT"; "ddd, dd MMM yyyy HH:mm:ss zzz"; "ddd, dd MMM yyyy HH:mm:ss EDT"|]
 
 let toCorrectNumber s =
     ((int s).ToString("00", CultureInfo.GetCultureInfo("de-DE")))
