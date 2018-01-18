@@ -104,9 +104,12 @@ let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) =
     )
 
     let rec waitForEpisodesAdded (agent:MailboxProcessor<SubscriptionListItemRendition*AddEpisodeRendition>) =
-        match agent.CurrentQueueLength with
-        | 0 -> ()
-        | _ -> waitForEpisodesAdded agent
+        async {
+            let! _ = Async.Sleep 2000 //Dirty hack
+            match agent.CurrentQueueLength with
+            | 0 -> ()
+            | _ -> return! waitForEpisodesAdded agent
+        }
 
     let rec loop() = async {
         let! (msg: SubscriptionListItemRendition) = inbox.Receive()
@@ -131,7 +134,7 @@ let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) =
             addEpisodeToSubscriptionAgent.Post (msg, rendition))
         |> ignore
 
-        waitForEpisodesAdded addEpisodeToSubscriptionAgent
+        let! _ = waitForEpisodesAdded addEpisodeToSubscriptionAgent
         supervisor.Post(FetchCompleted)
 
         return! loop()
