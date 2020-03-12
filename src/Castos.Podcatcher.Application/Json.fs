@@ -1,15 +1,13 @@
 namespace Castos.Podcatcher
 
+open Thoth.Json.Net
+
 [<AutoOpen>]
 module Json =
-    open Newtonsoft.Json
-
-    let private converter = Fable.JsonConverter()
-
-    let unjson<'T> json =
-            let a = JsonConvert.DeserializeObject(json, typeof<'T>, converter) :?> 'T
+    let inline unjson<'T> json =
+            let a = Decode.Auto.unsafeFromString<'T>(json, caseStrategy=CamelCase)
             a
 
-    let mkjson a =
-            let json = JsonConvert.SerializeObject(a, converter)
+    let inline mkjson a =
+            let json = Encode.Auto.toString(4, a, caseStrategy=CamelCase)
             json

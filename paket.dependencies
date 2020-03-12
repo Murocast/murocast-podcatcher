@@ -1,4 +1,4 @@
 source https://nuget.org/api/v2
 
 nuget FSharp.Core
-nuget Fable.JsonConverter
+nuget Thoth.Json.Net

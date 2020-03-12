@@ -18,9 +18,9 @@ type Queue<'a>(xs : 'a list, rxs : 'a list) =
             | [] -> (Queue(List.rev rxs,[])).TryTake()
             | y::ys -> Some(y), (Queue(ys, rxs))
 
-type SubscriptionId = Guid
-type SubscriptionListItemRendition = {
-    Id: SubscriptionId
+type FeedId = Guid
+type FeedListItemRendition = {
+    Id: FeedId
     Url: string
     Name: string
     Category: string
@@ -31,7 +31,7 @@ type EpisodeId = int
 type Episode = {
     Id: EpisodeId
     Guid: string
-    SubscriptionId: SubscriptionId
+    SubscriptionId: FeedId
     Url: string
     MediaUrl: string
     Title: string
@@ -46,19 +46,20 @@ type AddEpisodeRendition = {
     ReleaseDate: System.DateTime
     MediaUrl: string
     Length: int
+    Episode: int
 }
 
 type SupervisorMessage =
-    | Start of MailboxProcessor<SupervisorMessage> * SubscriptionListItemRendition list * AsyncReplyChannel<unit>
+    | Start of MailboxProcessor<SupervisorMessage> * FeedListItemRendition list * AsyncReplyChannel<unit>
     | FetchCompleted
 
 type SupervisorProgress =
     {
         Supervisor : MailboxProcessor<SupervisorMessage>
         ReplyChannel : AsyncReplyChannel<unit>
-        Workers : MailboxProcessor<SubscriptionListItemRendition> list
-        PendingUrls : SubscriptionListItemRendition Queue
-        Completed : SubscriptionListItemRendition list
+        Workers : MailboxProcessor<FeedListItemRendition> list
+        PendingUrls : FeedListItemRendition Queue
+        Completed : FeedListItemRendition list
         Dispatched : int
     }
 
@@ -68,7 +69,7 @@ type SupervisorStatus =
     | Finished
 
 [<Literal>]
-let CastosApi = "http://192.168.178.42/api"
+let CastosApi = "http://127.0.0.1/api"
 
 let getAsync (url:string) =
     async {
@@ -89,21 +90,21 @@ let postAsync (url:string) body =
         return! response.Content.ReadAsStringAsync() |> Async.AwaitTask
     }
 
-let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) = MailboxProcessor.Start(fun inbox ->
+let updateFeedAgent (supervisor : MailboxProcessor<SupervisorMessage>) = MailboxProcessor.Start(fun inbox ->
     let addEpisodeToSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
         let rec loop() = async {
-            let! (s:SubscriptionListItemRendition), rendition = inbox.Receive()
+            let! (s:FeedListItemRendition), rendition = inbox.Receive()
             let json = mkjson rendition
-            let! _ = postAsync (sprintf "%s/subscriptions/%O/episodes" CastosApi s.Id) json
+            let! _ = postAsync (sprintf "%s/feeds/%O/episodes" CastosApi s.Id) json
 
-            printfn "Add episode %s with mediaurl %s, guid %s and length %i to subscription %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
+            printfn "Add episode %s with mediaurl %s, guid %s and length %i to feed %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
             return! loop()
         }
 
         loop()
     )
 
-    let rec waitForEpisodesAdded (agent:MailboxProcessor<SubscriptionListItemRendition*AddEpisodeRendition>) =
+    let rec waitForEpisodesAdded (agent:MailboxProcessor<FeedListItemRendition*AddEpisodeRendition>) =
         async {
             let! _ = Async.Sleep 2000 //Dirty hack
             match agent.CurrentQueueLength with
@@ -112,10 +113,10 @@ let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) =
         }
 
     let rec loop() = async {
-        let! (msg: SubscriptionListItemRendition) = inbox.Receive()
+        let! (msg: FeedListItemRendition) = inbox.Receive()
         let url = msg.Url
 
-        let content = getAsync (sprintf "%s/subscriptions/%O/episodes" CastosApi msg.Id )
+        let content = getAsync (sprintf "%s/feeds/%O/episodes" CastosApi msg.Id )
                       |> Async.RunSynchronously
 
         let (episodes:Episode list) = unjson content
@@ -123,14 +124,15 @@ let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) =
         getRssPosts url
         |> List.ofSeq
         |> List.filter (fun item ->
-                            not(episodes |> List.exists (fun e -> item.Guid = e.Guid)) && (Option.isSome item.MediaUrl) && (Option.isSome item.Length))
+                            not(episodes |> List.exists (fun e -> item.Guid = e.Guid)) && (Option.isSome item.MediaUrl))
         |> List.map (fun e ->
-            let rendition ={ Guid = e.Guid
-                             Title = e.Title
-                             Url = e.Link
-                             MediaUrl = Option.get e.MediaUrl
-                             ReleaseDate = e.Date
-                             Length = Option.get e.Length }
+            let rendition = { Guid = e.Guid
+                              Title = e.Title
+                              Url = e.Link
+                              MediaUrl = Option.defaultValue "" e.MediaUrl
+                              ReleaseDate = e.Date
+                              Length = Option.defaultValue 0 e.Length
+                              Episode = Option.defaultValue 0 e.Episode }
             addEpisodeToSubscriptionAgent.Post (msg, rendition))
         |> ignore
 
@@ -146,14 +148,14 @@ let updateSubscriptionAgent (supervisor : MailboxProcessor<SupervisorMessage>) =
 let rec dispatch progress =
     match progress.PendingUrls.TryTake() with
     | None, _ -> progress
-    | Some subscription, queue -> match progress.Workers |> List.tryFind (fun worker -> worker.CurrentQueueLength = 0) with
+    | Some feed, queue -> match progress.Workers |> List.tryFind (fun worker -> worker.CurrentQueueLength = 0) with
                                   | Some idleWorker ->
-                                        idleWorker.Post(subscription)
+                                        idleWorker.Post(feed)
                                         dispatch { progress with
                                                        PendingUrls = queue
                                                        Dispatched = progress.Dispatched + 1 }
                                   | None when progress.Workers.Length < 5 ->
-                                        let newWorker = updateSubscriptionAgent progress.Supervisor
+                                        let newWorker = updateFeedAgent progress.Supervisor
                                         dispatch { progress with Workers = newWorker :: progress.Workers }
                                   | _ -> progress
 
@@ -167,13 +169,13 @@ let start supervisor replyChannel =
         Dispatched = 0
     }
 
-let enqueueSubscriptions subscriptions progress =
-    let pending = progress.PendingUrls |> List.foldBack(fun url pending -> pending.Enqueue(url)) subscriptions
+let enqueueFeeds feeds progress =
+    let pending = progress.PendingUrls |> List.foldBack(fun url pending -> pending.Enqueue(url)) feeds
     { progress with PendingUrls = pending }
 
-let handleStart supervisor subscriptions replyChannel =
+let handleStart supervisor feeds replyChannel =
     let progress = start supervisor replyChannel
-                   |> enqueueSubscriptions subscriptions
+                   |> enqueueFeeds feeds
                    |> dispatch
     if progress.PendingUrls.IsEmpty then
         Finished
@@ -208,7 +210,7 @@ let handleSupervisorMessage message state =
             handleFetchCompleted progress
         | _ -> failwith "Invalid state - can't complete fetch before starting."
 
-let updateSubscriptions subscriptions =
+let updateFeeds feeds =
     let supervisor = MailboxProcessor<SupervisorMessage>.Start(fun inbox ->
         let rec loop state =
             async {
@@ -218,15 +220,15 @@ let updateSubscriptions subscriptions =
                 | newState -> return! loop newState
             }
         loop NotStarted)
-    supervisor.PostAndAsyncReply(fun replyChannel -> Start(supervisor, subscriptions, replyChannel))
+    supervisor.PostAndAsyncReply(fun replyChannel -> Start(supervisor, feeds, replyChannel))
 
 [<EntryPoint>]
 let main argv =
-    let content = getAsync (sprintf "%s/subscriptions" CastosApi)
+    let content = getAsync (sprintf "%s/feeds" CastosApi)
                   |> Async.RunSynchronously
 
     unjson content
-    |> updateSubscriptions
+    |> updateFeeds
     |> Async.RunSynchronously
 
     0 // return an integer exit code

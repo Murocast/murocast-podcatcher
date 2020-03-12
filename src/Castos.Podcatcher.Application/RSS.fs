@@ -11,8 +11,9 @@ type RssPost = { Title: string;
                  Link: string;
                  Date: DateTime
                  Guid: string
-                 MediaUrl: string Option
-                 Length: int Option }
+                 MediaUrl: string option
+                 Length: int option
+                 Episode: int option }
 
 let private winToUtf (s:string) =
     let win1251 = Encoding.GetEncoding("windows-1251")
@@ -29,10 +30,16 @@ let parseDate = (flip4 (DateTime.ParseExact:string*string[]*CultureInfo*DateTime
 
 let toCorrectNumber s =
     ((int s).ToString("00", CultureInfo.GetCultureInfo("de-DE")))
+
+let secondsToString s =
+    let seconds = (int s)
+    let timeSpan = TimeSpan.FromSeconds(float seconds)
+    timeSpan.ToString("c")
+
 let normalizeDurationString (duration:string) =
     let splitted = duration.Split([|':'|])
     match splitted.Length with
-    | 1 -> sprintf "00:00:%s" (toCorrectNumber splitted.[0])
+    | 1 -> (secondsToString splitted.[0])
     | 2 -> sprintf "00:%s:%s" (toCorrectNumber splitted.[0]) (toCorrectNumber splitted.[1])
     | 3 -> sprintf "%s:%s:%s" (toCorrectNumber splitted.[0]) (toCorrectNumber splitted.[1]) (toCorrectNumber splitted.[2])
     | _ -> failwith "WrongFormat"
@@ -58,15 +65,29 @@ let updateMediaUrl (node:XmlNode) rssPost =
         { rssPost with
               MediaUrl = Some enclosureNode.Attributes.["url"].Value }
 
+let updateEpisode (node:XmlNode) nsManager rssPost =
+    let episodeNode = node.SelectSingleNode("itunes:episode", nsManager)
+    if(isNull episodeNode) then
+        rssPost
+    else
+        let (success, episode) = System.Int32.TryParse episodeNode.InnerText
+        if success then
+            { rssPost with
+                Episode = Some episode }
+        else
+            rssPost
+
 let private parseNode nsManager (node:XmlNode) =
     {  Title = (node.SelectSingleNode "title").InnerText
        Link = (node.SelectSingleNode "link").InnerText
        Date = parseDate (node.SelectSingleNode "pubDate").InnerText
        Guid = (node.SelectSingleNode "guid").InnerText
        MediaUrl = None
-       Length = None }
+       Length = None
+       Episode = None }
     |> updateDuration node nsManager
     |> updateMediaUrl node
+    |> updateEpisode node nsManager
 
 let public getRssPosts (host:string) =
     let doc = XmlDocument()
