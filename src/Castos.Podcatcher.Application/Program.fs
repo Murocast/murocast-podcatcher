@@ -20,23 +20,24 @@ type Queue<'a>(xs : 'a list, rxs : 'a list) =
 
 type FeedId = Guid
 type FeedListItemRendition = {
-    Id: FeedId
+    Id: System.Guid
     Url: string
     Name: string
     Category: string
     EpidsodesAmount: int
 }
 
-type EpisodeId = int
+type EpisodeId = System.Guid
 type Episode = {
     Id: EpisodeId
     Guid: string
-    SubscriptionId: FeedId
+    FeedId: FeedId
     Url: string
     MediaUrl: string
     Title: string
     Length: int
     ReleaseDate: System.DateTime
+    Episode: int
 }
 
 type AddEpisodeRendition = {
