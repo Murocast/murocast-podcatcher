@@ -41,7 +41,11 @@ let normalizeDurationString (duration:string) =
     match splitted.Length with
     | 1 -> (secondsToString splitted.[0])
     | 2 -> sprintf "00:%s:%s" (toCorrectNumber splitted.[0]) (toCorrectNumber splitted.[1])
-    | 3 -> sprintf "%s:%s:%s" (toCorrectNumber splitted.[0]) (toCorrectNumber splitted.[1]) (toCorrectNumber splitted.[2])
+    | 3 ->  let biggest = int (toCorrectNumber splitted.[0])
+            if(biggest > 23) then
+                sprintf "00:%i:%s" biggest (toCorrectNumber splitted.[1])
+            else
+                sprintf "%s:%s:%s" (toCorrectNumber splitted.[0]) (toCorrectNumber splitted.[1]) (toCorrectNumber splitted.[2])
     | _ -> failwith "WrongFormat"
 
 let parseDuration duration =
