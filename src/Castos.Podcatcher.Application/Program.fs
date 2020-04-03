@@ -4,9 +4,7 @@ open System.Net.Http
 open System.Text
 
 open Microsoft.Extensions.Configuration
-open Microsoft.Extensions.Configuration.EnvironmentVariables
 open System.IO
-open System.Threading
 
 open Rss
 open AgentUtilities
