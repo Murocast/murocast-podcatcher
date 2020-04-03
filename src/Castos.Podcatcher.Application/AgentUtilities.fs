@@ -1,6 +1,6 @@
 module AgentUtilities
 
-//http://fssnip.net/6c
+//https://github.com/7sharp9/SchedulerAgent
 
 open System
 open System.Threading

@@ -55,25 +55,6 @@ type AddEpisodeRendition = {
     Episode: int
 }
 
-type SupervisorMessage =
-    | Start of MailboxProcessor<SupervisorMessage> * FeedListItemRendition list * AsyncReplyChannel<unit>
-    | FetchCompleted
-
-type SupervisorProgress =
-    {
-        Supervisor : MailboxProcessor<SupervisorMessage>
-        ReplyChannel : AsyncReplyChannel<unit>
-        Workers : MailboxProcessor<FeedListItemRendition> list
-        PendingUrls : FeedListItemRendition Queue
-        Completed : FeedListItemRendition list
-        Dispatched : int
-    }
-
-type SupervisorStatus =
-    | NotStarted
-    | Running of SupervisorProgress
-    | Finished
-
 let config =
     let path = DirectoryInfo(Directory.GetCurrentDirectory()).FullName
     printfn "Searching for configuration in %s" path
@@ -104,7 +85,7 @@ let postAsync (url:string) body =
         return! response.Content.ReadAsStringAsync() |> Async.AwaitTask
     }
 
-let updateFeedAgent (supervisor : MailboxProcessor<SupervisorMessage>) = MailboxProcessor.Start(fun inbox ->
+let updateFeedAgent = MailboxProcessor.Start(fun inbox ->
     let addEpisodeToSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
         let rec loop() = async {
             let! (s:FeedListItemRendition), rendition = inbox.Receive()
@@ -151,90 +132,12 @@ let updateFeedAgent (supervisor : MailboxProcessor<SupervisorMessage>) = Mailbox
         |> ignore
 
         let! _ = waitForEpisodesAdded addEpisodeToSubscriptionAgent
-        supervisor.Post(FetchCompleted)
 
         return! loop()
     }
 
     loop()
 )
-
-let rec dispatch progress =
-    match progress.PendingUrls.TryTake() with
-    | None, _ -> progress
-    | Some feed, queue -> match progress.Workers |> List.tryFind (fun worker -> worker.CurrentQueueLength = 0) with
-                                  | Some idleWorker ->
-                                        idleWorker.Post(feed)
-                                        dispatch { progress with
-                                                       PendingUrls = queue
-                                                       Dispatched = progress.Dispatched + 1 }
-                                  | None when progress.Workers.Length < 5 ->
-                                        let newWorker = updateFeedAgent progress.Supervisor
-                                        dispatch { progress with Workers = newWorker :: progress.Workers }
-                                  | _ -> progress
-
-let start supervisor replyChannel =
-    {
-        Supervisor = supervisor
-        ReplyChannel = replyChannel
-        Workers = []
-        PendingUrls = Queue.Empty()
-        Completed = []
-        Dispatched = 0
-    }
-
-let enqueueFeeds feeds progress =
-    let pending = progress.PendingUrls |> List.foldBack(fun url pending -> pending.Enqueue(url)) feeds
-    { progress with PendingUrls = pending }
-
-let handleStart supervisor feeds replyChannel =
-    let progress = start supervisor replyChannel
-                   |> enqueueFeeds feeds
-                   |> dispatch
-    if progress.PendingUrls.IsEmpty then
-        Finished
-    else
-        Running progress
-
-let complete progress =
-    { progress with
-        Dispatched = progress.Dispatched - 1 }
-
-let handleFetchCompleted progress =
-    let progress =
-        progress
-        |> complete
-        |> dispatch
-    if progress.PendingUrls.IsEmpty && progress.Dispatched = 0 then
-        progress.ReplyChannel.Reply(())
-        Finished
-    else
-        Running progress
-
-let handleSupervisorMessage message state =
-    match message with
-    | Start (supervisor, subscriptions, replyChannel) ->
-        match state with
-        | NotStarted ->
-            handleStart supervisor subscriptions replyChannel
-        | _ -> failwith "Invalid state: Can't be started more than once."
-    | FetchCompleted ->
-        match state with
-        | Running progress ->
-            handleFetchCompleted progress
-        | _ -> failwith "Invalid state - can't complete fetch before starting."
-
-let updateFeeds feeds =
-    let supervisor = MailboxProcessor<SupervisorMessage>.Start(fun inbox ->
-        let rec loop state =
-            async {
-                let! message = inbox.Receive()
-                match state |> handleSupervisorMessage message with
-                | Finished -> return ()
-                | newState -> return! loop newState
-            }
-        loop NotStarted)
-    supervisor.PostAndAsyncReply(fun replyChannel -> Start(supervisor, feeds, replyChannel))
 
 let updateFeedsAgent =
     MailboxProcessor.Start(fun inbox ->
@@ -243,8 +146,9 @@ let updateFeedsAgent =
             try
                 let! content = getAsync url
 
-                do! unjson content
-                    |> updateFeeds
+                unjson content
+                |> List.map updateFeedAgent.Post
+                |> ignore
 
             with e -> printfn "%A" e
 
