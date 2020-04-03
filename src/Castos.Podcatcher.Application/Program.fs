@@ -6,6 +6,7 @@ open System.Text
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.Configuration.EnvironmentVariables
 open System.IO
+open System.Threading
 
 open Rss
 open AgentUtilities
@@ -165,14 +166,16 @@ let main argv =
     let post = updateFeedsAgent.Post
 
     let scheduler = SchedulerAgent<_>()
-    let cts = scheduler.Schedule(post, feedsUrl, TimeSpan.FromDays(0.), TimeSpan.FromMinutes(30.))
+    let cts = scheduler.Schedule(post, feedsUrl, TimeSpan.FromDays(0.), TimeSpan.FromSeconds(10.))
 
-    printfn "Press any key to cancel."
-    Console.ReadKey() |> ignore
+    Console.CancelKeyPress.Add(fun _ ->
+                                    printfn "Exiting..."
+                                    cts.Cancel()
+                                    |> ignore )
 
-    cts.Cancel()
+    cts.Token.WaitHandle.WaitOne()
+    |> ignore
 
-    printfn "Cancelled, press any key to exit."
-    Console.ReadKey() |> ignore
+    printf "Exited..."
 
     0 // return an integer exit code
