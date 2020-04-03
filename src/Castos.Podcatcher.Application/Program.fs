@@ -8,6 +8,7 @@ open Microsoft.Extensions.Configuration.EnvironmentVariables
 open System.IO
 
 open Rss
+open AgentUtilities
 
 type Queue<'a>(xs : 'a list, rxs : 'a list) =
     new() = Queue([], [])
@@ -235,16 +236,39 @@ let updateFeeds feeds =
         loop NotStarted)
     supervisor.PostAndAsyncReply(fun replyChannel -> Start(supervisor, feeds, replyChannel))
 
+let updateFeedsAgent =
+    MailboxProcessor.Start(fun inbox ->
+        let rec loop() = async {
+            let! (url:string) = inbox.Receive()
+            try
+                let! content = getAsync url
+
+                do! unjson content
+                    |> updateFeeds
+
+            with e -> printfn "%A" e
+
+            return! loop()
+        }
+
+        loop())
+
 [<EntryPoint>]
 let main argv =
     let feedsUrl = sprintf "%s/feeds" CastosApi
     printfn "Using FeedsUrl: %s" feedsUrl
 
-    let content = getAsync feedsUrl
-                  |> Async.RunSynchronously
+    let post = updateFeedsAgent.Post
 
-    unjson content
-    |> updateFeeds
-    |> Async.RunSynchronously
+    let scheduler = SchedulerAgent<_>()
+    let cts = scheduler.Schedule(post, feedsUrl, TimeSpan.FromDays(0.), TimeSpan.FromMinutes(30.))
+
+    printfn "Press any key to cancel."
+    Console.ReadKey() |> ignore
+
+    cts.Cancel()
+
+    printfn "Cancelled, press any key to exit."
+    Console.ReadKey() |> ignore
 
     0 // return an integer exit code
