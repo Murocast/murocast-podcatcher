@@ -3,6 +3,10 @@ open Castos.Podcatcher.Json
 open System.Net.Http
 open System.Text
 
+open Microsoft.Extensions.Configuration
+open Microsoft.Extensions.Configuration.EnvironmentVariables
+open System.IO
+
 open Rss
 
 type Queue<'a>(xs : 'a list, rxs : 'a list) =
@@ -69,8 +73,16 @@ type SupervisorStatus =
     | Running of SupervisorProgress
     | Finished
 
-[<Literal>]
-let CastosApi = "http://127.0.0.1/api"
+let config =
+    let path = DirectoryInfo(Directory.GetCurrentDirectory()).FullName
+    printfn "Searching for configuration in %s" path
+    ConfigurationBuilder()
+        .SetBasePath(path)
+        .AddJsonFile("appsettings.json", true, true)
+        .AddEnvironmentVariables()
+        .Build()
+
+let CastosApi = config.["castosApi"]
 
 let getAsync (url:string) =
     async {
@@ -225,7 +237,10 @@ let updateFeeds feeds =
 
 [<EntryPoint>]
 let main argv =
-    let content = getAsync (sprintf "%s/feeds" CastosApi)
+    let feedsUrl = sprintf "%s/feeds" CastosApi
+    printfn "Using FeedsUrl: %s" feedsUrl
+
+    let content = getAsync feedsUrl
                   |> Async.RunSynchronously
 
     unjson content

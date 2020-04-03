@@ -1,2 +1,6 @@
 FSharp.Core
 Thoth.Json.Net
+Microsoft.Extensions.Configuration
+Microsoft.Extensions.Configuration.FileExtensions
+Microsoft.Extensions.Configuration.Json
+Microsoft.Extensions.Configuration.EnvironmentVariables

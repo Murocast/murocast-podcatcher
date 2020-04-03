@@ -2,3 +2,8 @@ source https://nuget.org/api/v2
 
 nuget FSharp.Core
 nuget Thoth.Json.Net
+
+nuget Microsoft.Extensions.Configuration
+nuget Microsoft.Extensions.Configuration.FileExtensions
+nuget Microsoft.Extensions.Configuration.Json
+nuget Microsoft.Extensions.Configuration.EnvironmentVariables
