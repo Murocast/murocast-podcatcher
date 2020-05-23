@@ -1,4 +1,4 @@
-name: .NET Core
+name: build
 
 on: [push, pull_request]
 
@@ -22,6 +22,6 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet fake build -t BuildRelease
+      run: dotnet fake build
 #    - name: Test
 #      run: dotnet test --no-restore --verbosity normal
