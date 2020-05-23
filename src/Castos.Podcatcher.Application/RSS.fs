@@ -4,6 +4,7 @@ open Network
 
 open System.Globalization
 open System.Xml
+open System.Xml.Linq
 open System.Text
 open System
 
@@ -28,8 +29,11 @@ let parseDate = (flip4 (DateTime.ParseExact:string*string[]*CultureInfo*DateTime
                         CultureInfo.InvariantCulture
                         [|"ddd, dd MMM yyyy HH:mm:ss GMT"; "ddd, dd MMM yyyy HH:mm:ss zzz"; "ddd, dd MMM yyyy HH:mm:ss EDT"|]
 
-let toCorrectNumber s =
-    ((int s).ToString("00", CultureInfo.GetCultureInfo("de-DE")))
+let toCorrectNumber (s:string) =
+    let indexOfPoint = s.IndexOf "."
+    match indexOfPoint with
+    | -1 -> ((int s).ToString("00", CultureInfo.GetCultureInfo("de-DE")))
+    | _ -> ((int (s.Substring(0, indexOfPoint))).ToString("00", CultureInfo.GetCultureInfo("de-DE")))
 
 let secondsToString s =
     let seconds = (int s)
@@ -82,16 +86,24 @@ let updateEpisode (node:XmlNode) nsManager rssPost =
             rssPost
 
 let private parseNode nsManager (node:XmlNode) =
-    {  Title = (node.SelectSingleNode "title").InnerText
-       Link = (node.SelectSingleNode "link").InnerText
-       Date = parseDate (node.SelectSingleNode "pubDate").InnerText
-       Guid = (node.SelectSingleNode "guid").InnerText
-       MediaUrl = None
-       Length = None
-       Episode = None }
-    |> updateDuration node nsManager
-    |> updateMediaUrl node
-    |> updateEpisode node nsManager
+    try
+        {  Title = (node.SelectSingleNode "title").InnerText
+           Link = (node.SelectSingleNode "link").InnerText
+           Date = parseDate (node.SelectSingleNode "pubDate").InnerText
+           Guid = (node.SelectSingleNode "guid").InnerText
+           MediaUrl = None
+           Length = None
+           Episode = None }
+        |> updateDuration node nsManager
+        |> updateMediaUrl node
+        |> updateEpisode node nsManager
+        |> Some
+    with
+        | e ->
+              printfn "Xml: %s" (XElement.Parse(node.OuterXml).ToString())
+              printfn "Exn: %A" e
+              None
+
 
 let public getRssPosts (host:string) =
     let doc = XmlDocument()
@@ -105,6 +117,8 @@ let public getRssPosts (host:string) =
     doc.SelectNodes "/rss/channel/item"
         |> Seq.cast<XmlNode>
         |> Seq.map (parseNode nsManager)
+        |> Seq.filter (fun n -> n.IsSome)
+        |> Seq.map (fun n -> n.Value)
 
 let public getManyRssPosts: (list<string> -> list<RssPost>) =
     Seq.map getRssPosts
