@@ -149,7 +149,7 @@ let updateFeedsAgent =
                 |> List.map updateFeedAgent.Post
                 |> ignore
 
-            with e -> printfn "%A" e
+            with e -> printfn "%O" e
 
             return! loop()
         }
@@ -164,7 +164,7 @@ let main argv =
     let post = updateFeedsAgent.Post
 
     let scheduler = SchedulerAgent<_>()
-    let cts = scheduler.Schedule(post, feedsUrl, TimeSpan.FromDays(0.), TimeSpan.FromMinutes(30.))
+    let cts = scheduler.Schedule(post, feedsUrl, TimeSpan.FromDays(0.), TimeSpan.FromMinutes(15.))
 
     Console.CancelKeyPress.Add(fun _ ->
                                     printfn "Exiting..."
