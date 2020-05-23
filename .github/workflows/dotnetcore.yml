@@ -20,7 +20,7 @@ jobs:
     - name: Tools Restore
       run: dotnet tool restore
     - name: Restore
-      run: dotnet restore
+      run: dotnet paket restore
     - name: Build
       run: dotnet fake build
 #    - name: Test
