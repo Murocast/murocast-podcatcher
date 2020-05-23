@@ -3,6 +3,8 @@ version: '2'
 services:
   podcatcher:
     build:
-        context: .
+      context: .
     container_name: "podcatcher"
     restart: unless-stopped
+    environment:
+      - castosApi=https://app.murocast.net/api
