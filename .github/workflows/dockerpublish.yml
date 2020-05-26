@@ -31,7 +31,7 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet fake build
+      run: dotnet fake build -t BuildRelease
     - name: Upload build result
       uses: actions/upload-artifact@v1
       with:
