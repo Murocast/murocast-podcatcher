@@ -32,6 +32,11 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet fake build
+    - name: Upload build result
+      uses: actions/upload-artifact@v1
+      with:
+        name: build
+        path: build/
 
   push:
     needs: build
@@ -40,6 +45,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - name: Download math result for job 2
+        uses: actions/download-artifact@v1
+        with:
+          name: build
 
       - name: Build image
         run: docker build . --file Dockerfile --tag $IMAGE_NAME
