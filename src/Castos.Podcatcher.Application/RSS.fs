@@ -107,11 +107,8 @@ let normalizeDurationString (duration:string) =
         let parts = getTimeSpanParts splitted
         match parts.Length with
         | 2 -> sprintf "00:%i:%i" parts.[0] parts.[1]
-        | 3 ->  // let biggest = parts.[0]
-            // if(biggest > 23) then
-            //     sprintf "00:%i:%i" biggest parts.[1]
-            // else
-                 sprintf "%i:%i:%i" parts.[0] parts.[1] parts.[2]
+        | 3 -> sprintf "%i:%i:%i" parts.[0] parts.[1] parts.[2]
+        //30:23:42 where 30 first number are minutes        
         | 4 when splitted.Length = 3 ->
             let parts = getTimeSpanParts [|(splitted.[0]); (splitted.[1])|]
             sprintf "00:%i:%i" parts.[0] parts.[1]
