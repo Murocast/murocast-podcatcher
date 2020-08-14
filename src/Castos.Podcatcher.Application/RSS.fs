@@ -121,7 +121,7 @@ let parseDuration duration =
 
 let updateDuration (node:XmlNode) nsManager rssPost =
     let durationNode = node.SelectSingleNode("itunes:duration", nsManager)
-    if(isNull durationNode) then
+    if((isNull durationNode) || System.String.IsNullOrWhiteSpace(durationNode.InnerText)) then
         rssPost
     else
         { rssPost with
