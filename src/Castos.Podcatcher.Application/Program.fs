@@ -7,6 +7,7 @@ open Microsoft.Extensions.Configuration
 open System.IO
 
 open Rss
+open Parallel
 
 type Queue<'a>(xs : 'a list, rxs : 'a list) =
     new() = Queue([], [])
@@ -92,15 +93,12 @@ let updateFeed (msg: FeedListItemRendition) = async {
         }
 
     let url = msg.Url
+    printfn "Adding episodes for %s" url
+
     let! content = getAsync (sprintf "%s/feeds/%O/episodes" CastosApi msg.Id )
 
     let (episodes:Episode list) = unjson content
-
-    getRssPosts url
-    |> List.ofSeq
-    |> List.filter (fun item ->
-                        not(episodes |> List.exists (fun e -> item.Guid = e.Guid)) && (Option.isSome item.MediaUrl))
-    |> List.map (fun e ->
+    let f = fun (e:RssPost) ->
         let rendition = { Guid = e.Guid
                           Title = e.Title
                           Url = e.Link
@@ -108,17 +106,29 @@ let updateFeed (msg: FeedListItemRendition) = async {
                           ReleaseDate = e.Date
                           Length = Option.defaultValue 0 e.Length
                           Episode = Option.defaultValue 0 e.Episode }
-        addEpisodeToSubscription (msg, rendition))
-    |> Async.Parallel
+        addEpisodeToSubscription (msg, rendition)
+        |> Async.RunSynchronously
+
+    let items = getRssPosts url
+                |> List.ofSeq
+                |> List.filter (fun item ->
+                                    not(episodes |> List.exists (fun e -> item.Guid = e.Guid)) && (Option.isSome item.MediaUrl))
+
+    doParallelWithThrottle 10 f items
     |> ignore
  }
 
 let updateFeeds (url:string) = async {
     try
         let! content = getAsync url
-        let! _ = unjson content
-                 |> List.map updateFeed
-                 |> Async.Parallel
+        let items = unjson content
+                    |> Seq.ofList
+
+        let f a = Async.RunSynchronously (updateFeed a)
+
+        doParallelWithThrottle 10 f items
+        |> ignore
+
         return ()
     with e -> printfn "%O" e
 }
