@@ -1,9 +1,12 @@
-﻿open System
+﻿module Castos.Podcatcher.Application
+
+open System
 open Castos.Podcatcher.Json
 open System.Net.Http
 open System.Text
 
 open Microsoft.Extensions.Configuration
+open Microsoft.Extensions.Logging
 open System.IO
 
 open Rss
@@ -84,16 +87,18 @@ let postAsync (url:string) body =
         return! response.Content.ReadAsStringAsync() |> Async.AwaitTask
     }
 
-let updateFeed (msg: FeedListItemRendition) = async {
+let updateFeed (log:string->unit) (msg: FeedListItemRendition) = async {
     let addEpisodeToSubscription ((s:FeedListItemRendition), rendition) = async {
             let json = mkjson rendition
             let! _ = postAsync (sprintf "%s/feeds/%O/episodes" CastosApi s.Id) json
 
-            printfn "Add episode %s with mediaurl %s, guid %s and length %i to feed %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
+            sprintf "Add episode %s with mediaurl %s, guid %s and length %i to feed %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
+            |> log
         }
 
     let url = msg.Url
-    printfn "Adding episodes for %s" url
+    sprintf "Adding episodes for %s" url
+    |> log
 
     let! content = getAsync (sprintf "%s/feeds/%O/episodes" CastosApi msg.Id )
 
@@ -118,13 +123,13 @@ let updateFeed (msg: FeedListItemRendition) = async {
     |> ignore
  }
 
-let updateFeeds (url:string) = async {
+let updateFeeds (log:string->unit) (url:string) = async {
     try
         let! content = getAsync url
         let items = unjson content
                     |> Seq.ofList
 
-        let f a = Async.RunSynchronously (updateFeed a)
+        let f a = Async.RunSynchronously (updateFeed log a)
 
         doParallelWithThrottle 10 f items
         |> ignore
@@ -135,22 +140,12 @@ let updateFeeds (url:string) = async {
 
 [<EntryPoint>]
 let main argv =
+    let log (s:string) = Console.WriteLine(s)
     let feedsUrl = sprintf "%s/feeds" CastosApi
-    printfn "Using FeedsUrl: %s" feedsUrl
+    log (sprintf "Using FeedsUrl: %s" feedsUrl)
 
-    updateFeeds feedsUrl
+    updateFeeds log feedsUrl
     |> Async.RunSynchronously
-
-    //let scheduler = SchedulerAgent<_>()
-    //let cts = scheduler.Schedule(post, feedsUrl, TimeSpan.FromDays(0.), TimeSpan.FromMinutes(15.))
-
-    // Console.CancelKeyPress.Add(fun _ ->
-    //                                 printfn "Exiting..."
-    //                                 cts.Cancel()
-    //                                 |> ignore )
-
-    // cts.Token.WaitHandle.WaitOne()
-    // |> ignore
 
     printf "Exited..."
 

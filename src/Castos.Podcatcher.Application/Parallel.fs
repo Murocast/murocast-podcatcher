@@ -1,5 +1,6 @@
 module Parallel
 
+//http://blog.mavnn.co.uk/throttling-the-level-of-concurrency-in-f/
 open System.Collections.Concurrent
 
 type JobRequest<'T> =
