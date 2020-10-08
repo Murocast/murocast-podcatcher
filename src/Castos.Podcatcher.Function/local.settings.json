@@ -1,0 +1,9 @@
+{
+    "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=True",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet",
+    "castosApi": "https://app.murocast.net/api",
+    "PodcatcherScheduleTriggerTime": "0 */5 * * * *"
+  }
+}
