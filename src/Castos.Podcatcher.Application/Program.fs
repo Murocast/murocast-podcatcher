@@ -6,7 +6,6 @@ open System.Net.Http
 open System.Text
 
 open Microsoft.Extensions.Configuration
-open Microsoft.Extensions.Logging
 open System.IO
 
 open Rss
