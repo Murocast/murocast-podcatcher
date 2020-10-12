@@ -1,4 +1,6 @@
-﻿open System
+﻿module Castos.Podcatcher.Application
+
+open System
 open Castos.Podcatcher.Json
 open System.Net.Http
 open System.Text
@@ -7,7 +9,7 @@ open Microsoft.Extensions.Configuration
 open System.IO
 
 open Rss
-open AgentUtilities
+open Parallel
 
 type Queue<'a>(xs : 'a list, rxs : 'a list) =
     new() = Queue([], [])
@@ -84,95 +86,65 @@ let postAsync (url:string) body =
         return! response.Content.ReadAsStringAsync() |> Async.AwaitTask
     }
 
-let updateFeedAgent = MailboxProcessor.Start(fun inbox ->
-    let addEpisodeToSubscriptionAgent = MailboxProcessor.Start(fun inbox ->
-        let rec loop() = async {
-            let! (s:FeedListItemRendition), rendition = inbox.Receive()
+let updateFeed (log:string->unit) (msg: FeedListItemRendition) = async {
+    let addEpisodeToSubscription ((s:FeedListItemRendition), rendition) = async {
             let json = mkjson rendition
             let! _ = postAsync (sprintf "%s/feeds/%O/episodes" CastosApi s.Id) json
 
-            printfn "Add episode %s with mediaurl %s, guid %s and length %i to feed %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
-            return! loop()
+            sprintf "Add episode %s with mediaurl %s, guid %s and length %i to feed %s" rendition.Url rendition.MediaUrl rendition.Guid rendition.Length s.Name
+            |> log
         }
 
-        loop()
-    )
+    let url = msg.Url
+    sprintf "Adding episodes for %s" url
+    |> log
 
-    let rec waitForEpisodesAdded (agent:MailboxProcessor<FeedListItemRendition*AddEpisodeRendition>) =
-        async {
-            let! _ = Async.Sleep 2000 //Dirty hack
-            match agent.CurrentQueueLength with
-            | 0 -> ()
-            | _ -> return! waitForEpisodesAdded agent
-        }
+    let! content = getAsync (sprintf "%s/feeds/%O/episodes" CastosApi msg.Id )
 
-    let rec loop() = async {
-        let! (msg: FeedListItemRendition) = inbox.Receive()
-        let url = msg.Url
+    let (episodes:Episode list) = unjson content
+    let f = fun (e:RssPost) ->
+        let rendition = { Guid = e.Guid
+                          Title = e.Title
+                          Url = e.Link
+                          MediaUrl = Option.defaultValue "" e.MediaUrl
+                          ReleaseDate = e.Date
+                          Length = Option.defaultValue 0 e.Length
+                          Episode = Option.defaultValue 0 e.Episode }
+        addEpisodeToSubscription (msg, rendition)
+        |> Async.RunSynchronously
 
-        let content = getAsync (sprintf "%s/feeds/%O/episodes" CastosApi msg.Id )
-                      |> Async.RunSynchronously
+    let items = getRssPosts url
+                |> List.ofSeq
+                |> List.filter (fun item ->
+                                    not(episodes |> List.exists (fun e -> item.Guid = e.Guid)) && (Option.isSome item.MediaUrl))
 
-        let (episodes:Episode list) = unjson content
+    doParallelWithThrottle 10 f items
+    |> ignore
+ }
 
-        getRssPosts url
-        |> List.ofSeq
-        |> List.filter (fun item ->
-                            not(episodes |> List.exists (fun e -> item.Guid = e.Guid)) && (Option.isSome item.MediaUrl))
-        |> List.map (fun e ->
-            let rendition = { Guid = e.Guid
-                              Title = e.Title
-                              Url = e.Link
-                              MediaUrl = Option.defaultValue "" e.MediaUrl
-                              ReleaseDate = e.Date
-                              Length = Option.defaultValue 0 e.Length
-                              Episode = Option.defaultValue 0 e.Episode }
-            addEpisodeToSubscriptionAgent.Post (msg, rendition))
+let updateFeeds (log:string->unit) (url:string) = async {
+    try
+        let! content = getAsync url
+        let items = unjson content
+                    |> Seq.ofList
+
+        let f a = Async.RunSynchronously (updateFeed log a)
+
+        doParallelWithThrottle 10 f items
         |> ignore
 
-        let! _ = waitForEpisodesAdded addEpisodeToSubscriptionAgent
-
-        return! loop()
-    }
-
-    loop()
-)
-
-let updateFeedsAgent =
-    MailboxProcessor.Start(fun inbox ->
-        let rec loop() = async {
-            let! (url:string) = inbox.Receive()
-            try
-                let! content = getAsync url
-
-                unjson content
-                |> List.map updateFeedAgent.Post
-                |> ignore
-
-            with e -> printfn "%O" e
-
-            return! loop()
-        }
-
-        loop())
+        return ()
+    with e -> printfn "%O" e
+}
 
 [<EntryPoint>]
 let main argv =
+    let log (s:string) = Console.WriteLine(s)
     let feedsUrl = sprintf "%s/feeds" CastosApi
-    printfn "Using FeedsUrl: %s" feedsUrl
+    log (sprintf "Using FeedsUrl: %s" feedsUrl)
 
-    let post = updateFeedsAgent.Post
-
-    let scheduler = SchedulerAgent<_>()
-    let cts = scheduler.Schedule(post, feedsUrl, TimeSpan.FromDays(0.), TimeSpan.FromMinutes(15.))
-
-    Console.CancelKeyPress.Add(fun _ ->
-                                    printfn "Exiting..."
-                                    cts.Cancel()
-                                    |> ignore )
-
-    cts.Token.WaitHandle.WaitOne()
-    |> ignore
+    updateFeeds log feedsUrl
+    |> Async.RunSynchronously
 
     printf "Exited..."
 

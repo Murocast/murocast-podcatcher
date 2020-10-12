@@ -10,3 +10,4 @@ nuget Microsoft.Extensions.Configuration
 nuget Microsoft.Extensions.Configuration.FileExtensions
 nuget Microsoft.Extensions.Configuration.Json
 nuget Microsoft.Extensions.Configuration.EnvironmentVariables
+nuget Microsoft.NET.Sdk.Functions
